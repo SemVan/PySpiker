@@ -8,11 +8,13 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.signal import gaussian
+import random
 
 
 def normalize_signal(signal):
     signal = signal - np.mean(signal)
     return signal / np.max(np.abs(signal))
+
 
 def read_dataset(filename):
     return pd.read_csv(filename, header = None)
@@ -37,43 +39,40 @@ def build_labels(inputs1, inputs2, labels):
     return res[10:-10], inputs1[10:-10], inputs2[10:-10]
 
 
+def build_full_dataset(dataset):
+    full_dataset = []
+    i = 0
+    while i < dataset.shape[0]-3:
+        input1 = dataset.iloc[i]
+        input2 = dataset.iloc[i+1]
+        labels = dataset.iloc[i+2]
+        labels, input1, input2 = build_labels(input1, input2, labels)
+        full_dataset.append([input1, input2, labels])
+        i += 3
+    return full_dataset
 
-def build_batch(inputs1, inputs2, labels):
-    n = 100
-    step = 5
-    data = []
-    lab = []
-    i = 100
-    while i < len(inputs1)-n:
-        data.append([np.asarray(inputs1[i:i+n]).astype(np.double), np.asarray(inputs2[i:i+n]).astype(np.double)])
-        # data.append(np.asarray(inputs1[i:i+n]).astype(np.double))
-        l = check_labels(labels[i:i+n])
-        lab.append(l)
-        # if l == 0:
-        #     plt.plot(range(n), inputs1[i:i+n])
-        #     plt.plot(range(n), inputs2[i:i+n])
-        #     plt.show()
-        i += step
-    ones = np.sum(lab)
-    final_data = []
-    final_lab = []
-    for i, elem in enumerate(data):
-        # print(lab[i])
-        if lab[i] == 0 and ones > 0:
-            final_data.append(elem)
-            final_lab.append(0)
-            ones -= 1
-        if lab[i] == 1:
-            final_data.append(elem)
-            final_lab.append(1)
-    return final_data, final_lab
+
+def build_batches(dataset, batch_size):
+    iterations = int(len(dataset) / batch_size)
+    batches = []
+
+    for i in range(iterations):
+        bch = np.asarray(random.sample(dataset, batch_size))
+        batches.append(np.asarray(random.sample(dataset, batch_size)))
+    return np.asarray(batches)
+
+
+def train_test_merger(dataset, proportion):
+    split_index = int(len(dataset) * proportion)
+    train = dataset[:split_index]
+    test = dataset[split_index]
+    return train, test
 
 
 class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, n_layers=1):
+    def __init__(self, input_size, output_size, n_layers=1):
         super(RNN, self).__init__()
         self.input_size = input_size
-        self.hidden_size = hidden_size
         self.output_size = output_size
         self.n_layers = n_layers
 
@@ -97,13 +96,12 @@ class RNN(nn.Module):
 
 
 input_size = 2
-hidden_size = 5
 output_size = 2
 batch_size = 5
 n_layers = 2
 seq_len = 1
 
-rnn = RNN(input_size, hidden_size, output_size, n_layers=n_layers)
+rnn = RNN(input_size, output_size, n_layers=n_layers)
 criterion = nn.MSELoss()
 optimizer = optim.SGD(rnn.parameters(), lr=0.1, momentum=0.9)
 
@@ -118,31 +116,27 @@ running_loss = 0.0
 hidden = None
 i = 0
 
+print("Building dataset")
+final_dataset = build_full_dataset(dataset)
+train, test = train_test_merger(final_dataset, 0.9)
+print("Building batches")
+batches = build_batches(train, 5)
+print(batches)
+
+print("Training")
 for epoch in range(2):
     i = 0
     losses = []
     steps = []
-    while i < dataset.shape[0]-3:
-
-        input1 = dataset.iloc[i]
-        input2 = dataset.iloc[i+1]
-        labels = dataset.iloc[i+2]
-        labels1, input1, input2 = build_labels(input1, input2, labels)
-
-        input_batch = [[input1, input2]]
-        output_batch = [labels1]
+    for i, batch in enumerate(batches):
+        input_batch = batch[:, :2]
+        output_batch = batch[:, 2]
         inputs = torch.from_numpy(np.asarray(input_batch)).float()
         labels = torch.from_numpy(np.asarray(output_batch)).float()
 
         res1 = rnn.forward(inputs)
-        to_plot = normalize_signal(res1.detach().numpy()[0][0])
-        to_plot2 = normalize_signal(input1)
-        # print(to_plot)
-        # plt.plot(range(len(to_plot2)), to_plot2)
-        # plt.plot(range(len(to_plot)), to_plot)
-        # plt.plot(range(len(labels1)), labels1)
-        # plt.legend()
-        # plt.show()
+        # to_plot = normalize_signal(res1.detach().numpy()[0][0])
+        # to_plot2 = normalize_signal(input1)
 
         res = res1.squeeze()
         optimizer.zero_grad()
@@ -158,12 +152,11 @@ for epoch in range(2):
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
                 running_loss = 0.0
                 # plt.plot(range(len(to_plot2)), to_plot2)
-                plt.plot(range(len(to_plot)), to_plot)
-                plt.plot(range(len(to_plot2)), to_plot2)
-                plt.plot(range(len(labels1)), labels1)
-                plt.legend()
-                plt.show()
+                # plt.plot(range(len(to_plot)), to_plot)
+                # plt.plot(range(len(to_plot2)), to_plot2)
+                # plt.plot(range(len(labels1)), labels1)
+                # plt.legend()
+                # plt.show()
 
-        i += 3
     plt.plot(steps, losses)
     plt.show()
