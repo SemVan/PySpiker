@@ -2,6 +2,8 @@ import csv
 import numpy as np
 import random
 import torch
+import pandas as pd
+from scipy.signal import gaussian
 
 DATASET_NAME = 'dataset.csv'
 CONTACT_DATASET_NAME = 'dataset_contact.csv'
@@ -145,3 +147,66 @@ def parse_set2(t_set, batch_size):
 Signals = read_dataset(DATASET_NAME)
 Training_set, Testing_set = GRU_get_training_set(Signals, 150)
 outputs, inputs = parse_set(Training_set, 50)
+
+
+def normalize_signal(signal):
+    crit = np.max(signal) - np.min(signal)
+    if crit > 0:
+        signal = signal - np.mean(signal)
+        return signal / np.max(np.abs(signal))
+    else:
+        return signal
+
+def read_dataset(filename):
+    return pd.read_csv(filename, header = None)
+
+
+def check_labels(labs):
+    pos = -1
+    for i, elem in enumerate(labs):
+        if elem == 1:
+            pos = i
+    if abs(pos - len(labs)/2) <25:
+        return 1
+    else:
+        return 0
+
+
+def build_labels(inputs1, inputs2, labels):
+    kernel = gaussian(21, 11)
+    inputs1 = normalize_signal(inputs1)
+    inputs2 = normalize_signal(inputs2)
+    res = np.convolve(labels, kernel, 'same')
+    return res[10:-10], inputs1[10:-10], inputs2[10:-10]
+
+
+
+def build_batch(inputs1, inputs2, labels):
+    n = 100
+    step = 5
+    data = []
+    lab = []
+    i = 100
+    while i < len(inputs1)-n:
+        data.append([np.asarray(inputs1[i:i+n]).astype(np.double), np.asarray(inputs2[i:i+n]).astype(np.double)])
+        # data.append(np.asarray(inputs1[i:i+n]).astype(np.double))
+        l = check_labels(labels[i:i+n])
+        lab.append(l)
+        # if l == 0:
+        #     plt.plot(range(n), inputs1[i:i+n])
+        #     plt.plot(range(n), inputs2[i:i+n])
+        #     plt.show()
+        i += step
+    ones = np.sum(lab)
+    final_data = []
+    final_lab = []
+    for i, elem in enumerate(data):
+        # print(lab[i])
+        if lab[i] == 0 and ones > 0:
+            final_data.append(elem)
+            final_lab.append(0)
+            ones -= 1
+        if lab[i] == 1:
+            final_data.append(elem)
+            final_lab.append(1)
+    return final_data, final_lab
