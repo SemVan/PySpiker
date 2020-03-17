@@ -10,7 +10,13 @@ from matplotlib import pyplot as plt
 from scipy.signal import gaussian
 import random
 import csv
+import argparse
 
+
+def get_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', dest='mode', type=str)
+    return parser.parse_args()
 
 def normalize_signal(signal):
     signal = signal - np.mean(signal)
@@ -132,6 +138,8 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(rnn.parameters(), lr=0.1, momentum=0.9)
 
 dataset = read_dataset("train.csv")
+train_dataset = read_dataset("train.csv")
+test_dataset = read_dataset("test.csv")
 # save_splitted(dataset)
 print("DATASET LOADED")
 data = np.asarray([])
@@ -144,47 +152,63 @@ hidden = None
 i = 0
 
 print("Building dataset")
-final_dataset = build_full_dataset(dataset)
+train_dataset = build_full_dataset(train_dataset)
+test_dataset = build_full_dataset(test_dataset)
 
-# train = read_dataset('train.csv')
-# test = read_dataset('test.csv')
 print("Building batches")
-batches = build_batches(final_dataset, 3)
+batches = build_batches(train_dataset, 3)
+t_batches = build_batches(test_dataset, 3)
 print(batches)
 
-print("Training")
-for epoch in range(2):
-    i = 0
-    losses = []
-    steps = []
-    for i, batch in enumerate(batches):
+args = get_arguments()
+if args.mode == "train":
+    print("Training")
+    for epoch in range(2):
+        i = 0
+        losses = []
+        steps = []
+        for i, batch in enumerate(batches):
+            input_batch = batch[:, :2]
+            output_batch = batch[:, 2]
+            inputs = torch.from_numpy(np.asarray(input_batch)).float()
+            labels = torch.from_numpy(np.asarray(output_batch)).float()
+            optimizer.zero_grad()
+            res1 = rnn.forward(inputs)
+            to_plot = normalize_signal(res1.detach().numpy()[0][0])
+            to_plot2 = normalize_signal(input_batch[0])
+
+            res = res1.squeeze()
+            loss = criterion(res, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            losses.append(loss.item())
+            steps.append(i)
+            if i % 100 == 99:    # print every 2000 mini-batches
+                    print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
+                    running_loss = 0.0
+
+        plt.plot(steps, losses)
+        plt.show()
+
+    torch.save(rnn.state_dict(), 'model.pth')
+else:
+    print("Testing")
+    rnn.load_state_dict(torch.load('model.pth'))
+    for i, batch in enumerate(t_batches):
         input_batch = batch[:, :2]
         output_batch = batch[:, 2]
         inputs = torch.from_numpy(np.asarray(input_batch)).float()
         labels = torch.from_numpy(np.asarray(output_batch)).float()
-        optimizer.zero_grad()
         res1 = rnn.forward(inputs)
         to_plot = normalize_signal(res1.detach().numpy()[0][0])
         to_plot2 = normalize_signal(input_batch[0])
 
+        plt.plot(range(len(to_plot)), to_plot)
+        plt.plot(range(len(output_batch[0])), output_batch[0])
+        plt.legend()
+        plt.show()
+
         res = res1.squeeze()
         loss = criterion(res, labels)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        losses.append(loss.item())
-        steps.append(i)
-        if i % 100 == 99:    # print every 2000 mini-batches
-                print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
-                running_loss = 0.0
-                plt.plot(range(len(to_plot2)), to_plot2)
-                plt.plot(range(len(to_plot)), to_plot)
-                plt.plot(range(len(to_plot2)), to_plot2)
-                plt.plot(range(len(output_batch[0])), output_batch[0])
-                plt.legend()
-                plt.show()
-
-    plt.plot(steps, losses)
-    plt.show()
-
-torch.save(rnn.state_dict(), 'model.pth')
+        print(loss)
