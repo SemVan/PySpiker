@@ -148,9 +148,16 @@ for i in range(df.shape[0] - 1):
 
 mixer = []
 sz = 730
+overlap = int(730/2)
 for row in new_df:
-    for i in range(int(len(row[0]) / sz)):
-        mixer.append([row[0][i*sz : (i+1)*sz], row[1][i*sz : (i+1)*sz], row[2][i*sz : (i+1)*sz]])
+    start = 0
+    while start <= len(row[0]) - sz:
+        r1 = row[0][start : start + sz]
+        r2 = row[1][start : start + sz]
+        r3 = row[2][start : start + sz]
+        mixer.append([r1, r2, r3])
+        start += overlap
+
 
 print("total_inputs ", len(mixer))
 write_dataset(mixer, "dataset_contact.csv")

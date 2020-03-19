@@ -11,16 +11,13 @@ from scipy.signal import gaussian
 import random
 import csv
 import argparse
+from nnmath import *
 
 
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', dest='mode', type=str)
     return parser.parse_args()
-
-def normalize_signal(signal):
-    signal = signal - np.mean(signal)
-    return signal / np.max(np.abs(signal))
 
 
 def read_dataset(filename):
@@ -55,11 +52,12 @@ def check_labels(labs):
 
 
 def build_labels(inputs1, inputs2, labels):
+    offset = 10
     kernel = gaussian(21, 11)
     inputs1 = normalize_signal(inputs1)
     inputs2 = normalize_signal(inputs2)
     res = np.convolve(labels, kernel, 'same')
-    return res, inputs1, inputs2
+    return res[offset:-offset], inputs1[offset:-offset], inputs2[offset:-offset]
 
 
 def build_full_dataset(dataset):
@@ -110,7 +108,9 @@ class RNN(nn.Module):
 
         self.c1 = nn.Conv1d(input_size, 64, kernel_size=63, padding=31, padding_mode='zeros')
         self.c2 = nn.Conv1d(64, 128, kernel_size=11, padding=5, padding_mode='zeros')
-        self.c3 = nn.Conv1d(128, 1, kernel_size = 11, padding=5, padding_mode='zeros')
+        self.c3 = nn.Conv1d(128, 128, kernel_size=11, padding=5, padding_mode='zeros')
+        self.c4 = nn.Conv1d(128, 1, kernel_size = 11, padding=5, padding_mode='zeros')
+        # self.l = nn.Linear(128, 1)
 
 
     def forward(self, inputs):
@@ -121,6 +121,10 @@ class RNN(nn.Module):
         c = self.c2(p)
         p = F.relu(c)
         c = self.c3(p)
+        p = F.relu(c)
+        c = self.c4(p)
+        # p = F.relu(c)
+        # c = self.l(p)
         sigm = Sigmoid()
         p = sigm(c)
         return p
@@ -135,12 +139,13 @@ seq_len = 1
 
 rnn = RNN(input_size, output_size, n_layers=n_layers)
 criterion = nn.MSELoss()
-optimizer = optim.SGD(rnn.parameters(), lr=0.1, momentum=0.9)
+optimizer = optim.SGD(rnn.parameters(), lr=0.01, momentum=0.9)
 
-dataset = read_dataset("train.csv")
+# dataset = read_dataset("dataset_contact.csv")
+# save_splitted(dataset)
 train_dataset = read_dataset("train.csv")
 test_dataset = read_dataset("test.csv")
-# save_splitted(dataset)
+
 print("DATASET LOADED")
 data = np.asarray([])
 labels = np.asarray([])
@@ -158,8 +163,7 @@ test_dataset = build_full_dataset(test_dataset)
 print("Building batches")
 batches = build_batches(train_dataset, 3)
 t_batches = build_batches(test_dataset, 3)
-print(batches)
-
+running_custom_loss = 0
 args = get_arguments()
 if args.mode == "train":
     print("Training")
@@ -174,7 +178,9 @@ if args.mode == "train":
             labels = torch.from_numpy(np.asarray(output_batch)).float()
             optimizer.zero_grad()
             res1 = rnn.forward(inputs)
+
             to_plot = normalize_signal(res1.detach().numpy()[0][0])
+            custom_loss = get_loss(res1.detach().numpy()[0], output_batch[0])
             to_plot2 = normalize_signal(input_batch[0])
 
             res = res1.squeeze()
@@ -182,11 +188,14 @@ if args.mode == "train":
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+            running_custom_loss += custom_loss
             losses.append(loss.item())
             steps.append(i)
             if i % 100 == 99:    # print every 2000 mini-batches
                     print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
                     running_loss = 0.0
+                    print(running_custom_loss)
+                    running_custom_loss = 0.0
 
         plt.plot(steps, losses)
         plt.show()
