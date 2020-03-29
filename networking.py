@@ -12,11 +12,13 @@ import random
 import csv
 import argparse
 from nnmath import *
+from metrics import *
 
 
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', dest='mode', type=str)
+    parser.add_argument('--debug', dest='debug', type=str)
     return parser.parse_args()
 
 
@@ -53,7 +55,7 @@ def check_labels(labs):
 
 def build_labels(inputs1, inputs2, labels):
     offset = 10
-    kernel = gaussian(21, 11)
+    kernel = gaussian(35, 5)
     inputs1 = normalize_signal(inputs1)
     inputs2 = normalize_signal(inputs2)
     res = np.convolve(labels, kernel, 'same')
@@ -94,8 +96,11 @@ def save_splitted(dataset):
 
     train = dataset.iloc[:splitter]
     test = dataset.iloc[splitter:]
+    debug = dataset.iloc[:150]
     train.to_csv('train.csv', header=False, index=False)
     test.to_csv('test.csv', header=False, index=False)
+    test.to_csv('debug.csv', header=False, index=False)
+
     return
 
 
@@ -106,27 +111,30 @@ class RNN(nn.Module):
         self.output_size = output_size
         self.n_layers = n_layers
 
-        self.c1 = nn.Conv1d(input_size, 64, kernel_size=63, padding=31, padding_mode='zeros')
-        self.c2 = nn.Conv1d(64, 128, kernel_size=11, padding=5, padding_mode='zeros')
-        self.c3 = nn.Conv1d(128, 128, kernel_size=11, padding=5, padding_mode='zeros')
-        self.c4 = nn.Conv1d(128, 1, kernel_size = 11, padding=5, padding_mode='zeros')
+        self.c1 = nn.Conv1d(input_size, 16, kernel_size=63, padding=31, padding_mode='zeros')
+        self.c2 = nn.Conv1d(16, 32, kernel_size=21, padding=10, padding_mode='zeros')
+        self.c3 = nn.Conv1d(32, 32, kernel_size=21, padding=10, padding_mode='zeros')
+        self.c4 = nn.Conv1d(32, 1, kernel_size=21, padding=10, padding_mode='zeros')
+        self.c5 = nn.Conv1d(1, 1, kernel_size=21, padding=10, padding_mode='zeros')
+        self.c6 = nn.Conv1d(1, 1, kernel_size = 21, padding=10, padding_mode='zeros')
         # self.l = nn.Linear(128, 1)
 
 
     def forward(self, inputs):
         batch_size = inputs.size(0)
-
+        sigm = Sigmoid()
         c = self.c1(inputs)
         p = F.relu(c)
         c = self.c2(p)
         p = F.relu(c)
         c = self.c3(p)
-        p = F.relu(c)
+        p = F.tanh(c)
         c = self.c4(p)
-        # p = F.relu(c)
-        # c = self.l(p)
-        sigm = Sigmoid()
-        p = sigm(c)
+        p = F.tanh(c)
+        c = self.c5(p)
+        p = F.tanh(c)
+        c = self.c6(p)
+        p = F.tanh(c)
         return p
 
 
@@ -139,17 +147,31 @@ seq_len = 1
 
 rnn = RNN(input_size, output_size, n_layers=n_layers)
 criterion = nn.MSELoss()
-optimizer = optim.SGD(rnn.parameters(), lr=0.01, momentum=0.9)
+# optimizer = optim.SGD(rnn.parameters(), lr=0.01, momentum=0.9)
+
+optimizer = optim.Adadelta(rnn.parameters(), lr=1.0)
+
+args = get_arguments()
 
 # dataset = read_dataset("dataset_contact.csv")
 # save_splitted(dataset)
-train_dataset = read_dataset("train.csv")
-test_dataset = read_dataset("test.csv")
+
+if args.debug == "on":
+    train_dataset = read_dataset("debug.csv")
+    train_dataset = build_full_dataset(train_dataset)
+    batches = build_batches(train_dataset, 3)
+else:
+    train_dataset = read_dataset("train.csv")
+    test_dataset = read_dataset("test.csv")
+    train_dataset = build_full_dataset(train_dataset)
+    test_dataset = build_full_dataset(test_dataset)
+    batches = build_batches(train_dataset, 9)
+    t_batches = build_batches(test_dataset, 1)
+
 
 print("DATASET LOADED")
 data = np.asarray([])
 labels = np.asarray([])
-
 
 epoch = 1
 running_loss = 0.0
@@ -157,14 +179,10 @@ hidden = None
 i = 0
 
 print("Building dataset")
-train_dataset = build_full_dataset(train_dataset)
-test_dataset = build_full_dataset(test_dataset)
 
 print("Building batches")
-batches = build_batches(train_dataset, 3)
-t_batches = build_batches(test_dataset, 3)
 running_custom_loss = 0
-args = get_arguments()
+
 if args.mode == "train":
     print("Training")
     for epoch in range(2):
@@ -178,12 +196,10 @@ if args.mode == "train":
             labels = torch.from_numpy(np.asarray(output_batch)).float()
             optimizer.zero_grad()
             res1 = rnn.forward(inputs)
-
-            to_plot = normalize_signal(res1.detach().numpy()[0][0])
-            custom_loss = get_loss(res1.detach().numpy()[0], output_batch[0])
-            to_plot2 = normalize_signal(input_batch[0])
-
             res = res1.squeeze()
+
+            custom_loss = get_loss_batch(res1, labels)
+
             loss = criterion(res, labels)
             loss.backward()
             optimizer.step()
@@ -199,10 +215,10 @@ if args.mode == "train":
 
         plt.plot(steps, losses)
         plt.show()
-
     torch.save(rnn.state_dict(), 'model.pth')
 else:
     print("Testing")
+    counts = []
     rnn.load_state_dict(torch.load('model.pth'))
     for i, batch in enumerate(t_batches):
         input_batch = batch[:, :2]
@@ -210,14 +226,19 @@ else:
         inputs = torch.from_numpy(np.asarray(input_batch)).float()
         labels = torch.from_numpy(np.asarray(output_batch)).float()
         res1 = rnn.forward(inputs)
-        to_plot = normalize_signal(res1.detach().numpy()[0][0])
+        to_plot = res1.detach().numpy()[0][0]
         to_plot2 = normalize_signal(input_batch[0])
 
-        plt.plot(range(len(to_plot)), to_plot)
-        plt.plot(range(len(output_batch[0])), output_batch[0])
-        plt.legend()
-        plt.show()
+        counts.append(get_hr_metric(to_plot, output_batch[0]))
+        # plt.plot(range(len(to_plot)), to_plot)
+        # plt.plot(range(len(output_batch[0])), output_batch[0])
+        # plt.legend()
+        # plt.show()
 
         res = res1.squeeze()
         loss = criterion(res, labels)
         print(loss)
+    counts = np.asarray(counts)
+    print("AVERAGE HR DIFF ", np.nanmean(counts[:, 3]))
+    print(counts[:, 3])
+    print("PERCENTAGE OF GOOD PIECES ", np.mean(counts[:, 2]))

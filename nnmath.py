@@ -1,30 +1,30 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import torch
+from torch.nn import L1Loss
+
+class MyLoss(L1Loss):
+    def forward(self, input, target):
+        return get_loss_batch(input, target)
+
 
 
 def get_loss_batch(obatch, lbatch):
-    loss = 0
+    loss = torch.zeros(len(obatch), requires_grad = True)
     for i in range(len(obatch)):
-        loss += get_loss(obatch[i], lbatch[i])
-    return loss
+        loss[i] = get_loss(obatch[i], lbatch[i])
+    return torch.sum(loss)
 
 def get_loss(nnout, labels):
-    nnout = normalize_signal(np.asarray(nnout[0]))
-    labels = np.asarray(labels)
-
-    nnout = cutout_low(nnout, 0.8)
-
-    # plt.plot(range(len(nnout)), nnout)
-    # plt.plot(range(len(labels)), labels)
-    # plt.show()
-
-    peaks = get_simple_peaks(nnout)
-    lpeaks = np.where(labels == 1)
+    # nnout = cutout_low(nnout, 0.6)
+    # peaks = get_simple_peaks(nnout)
+    peaks = torch.where(nnout == 1)[0]
+    lpeaks = torch.where(labels == 1)[0]
     return loss_function(peaks, lpeaks)
 
 
 def cutout_low(signal, threshold):
-    idxs = np.where(signal < threshold)
+    idxs = torch.where(signal < threshold)
     signal[idxs] = 0
     return signal
 
@@ -43,11 +43,11 @@ def get_simple_peaks(signal):
 
 
 def loss_function(pout, plab):
-    first_part = 1 - np.exp(-np.abs(len(pout) - len(plab[0])))
-    pairs = get_pairs(pout, plab[0])
-    diffs = get_pairs_diff(pairs)
-    second_part = np.sum(diffs)/710
-    return (first_part + second_part)/2
+    first_part = 1-torch.exp(-torch.abs(torch.tensor(pout.shape, dtype=torch.double) - torch.tensor(plab.shape, dtype=torch.double)))
+    # pairs = get_pairs(pout, plab[0])
+    # diffs = get_pairs_diff(pairs)
+    # second_part = np.sum(diffs)/710
+    return first_part
 
 
 def get_pairs(p1, p2):
@@ -63,6 +63,7 @@ def get_pairs(p1, p2):
                 idx = j
         pairs.append([i, idx])
     return pairs
+
 
 def get_pairs_diff(ps):
     return [np.abs(x[0]-x[1]) for x in ps]
