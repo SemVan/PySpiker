@@ -147,9 +147,9 @@ seq_len = 1
 
 rnn = RNN(input_size, output_size, n_layers=n_layers)
 criterion = nn.MSELoss()
-# optimizer = optim.SGD(rnn.parameters(), lr=0.01, momentum=0.9)
+optimizer = optim.SGD(rnn.parameters(), lr=0.0001, momentum=0.9)
 
-optimizer = optim.Adadelta(rnn.parameters(), lr=1.0)
+# optimizer = optim.Adadelta(rnn.parameters(), lr=1.0)
 
 args = get_arguments()
 
@@ -185,10 +185,12 @@ running_custom_loss = 0
 
 if args.mode == "train":
     print("Training")
-    for epoch in range(2):
+    losses = []
+    custom_losses = []
+    steps = []
+    j = 0
+    for epoch in range(5):
         i = 0
-        losses = []
-        steps = []
         for i, batch in enumerate(batches):
             input_batch = batch[:, :2]
             output_batch = batch[:, 2]
@@ -198,23 +200,28 @@ if args.mode == "train":
             res1 = rnn.forward(inputs)
             res = res1.squeeze()
 
-            custom_loss = get_loss_batch(res1, labels)
+            custom_loss = get_loss_batch3(res1, labels)
 
             loss = criterion(res, labels)
-            loss.backward()
+            print(custom_loss)
+            custom_loss.backward()
+            print(res.grad)
             optimizer.step()
             running_loss += loss.item()
             running_custom_loss += custom_loss
             losses.append(loss.item())
-            steps.append(i)
+            custom_losses.append(custom_loss.item())
+            steps.append(j)
+            j += 1
             if i % 100 == 99:    # print every 2000 mini-batches
                     print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
                     running_loss = 0.0
-                    print(running_custom_loss)
+                    print(running_custom_loss/100)
                     running_custom_loss = 0.0
 
-        plt.plot(steps, losses)
-        plt.show()
+    plt.plot(steps, losses, label="MSE")
+    plt.plot(steps, custom_losses, label="CUSTOM LOSS")
+    plt.show()
     torch.save(rnn.state_dict(), 'model.pth')
 else:
     print("Testing")
@@ -226,10 +233,14 @@ else:
         inputs = torch.from_numpy(np.asarray(input_batch)).float()
         labels = torch.from_numpy(np.asarray(output_batch)).float()
         res1 = rnn.forward(inputs)
+
+        custom_loss = get_loss_batch2(res1, labels)
+
         to_plot = res1.detach().numpy()[0][0]
         to_plot2 = normalize_signal(input_batch[0])
-
-        counts.append(get_hr_metric(to_plot, output_batch[0]))
+        r = get_hr_metric(to_plot, output_batch[0])
+        if len(r) >0:
+            counts.append(get_hr_metric(to_plot, output_batch[0]))
         # plt.plot(range(len(to_plot)), to_plot)
         # plt.plot(range(len(output_batch[0])), output_batch[0])
         # plt.legend()

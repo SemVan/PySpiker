@@ -3,10 +3,29 @@ from matplotlib import pyplot as plt
 import torch
 from torch.nn import L1Loss
 
-class MyLoss(L1Loss):
-    def forward(self, input, target):
-        return get_loss_batch(input, target)
+def get_loss_batch3(obatch, lbatch):
+    multi = obatch * lbatch
+    bad = obatch - multi
+    loss_step = (torch.sum(obatch - obatch * lbatch) / torch.sum(obatch))
+    return loss_step / (obatch.shape[0] * 10)
 
+def get_loss_batch2(obatch, lbatch):
+    loss = 0
+    for i in range(len(obatch)):
+        answer = obatch[i]
+        label = lbatch[i]
+        multi = answer*label
+        bad = answer - multi
+        loss_step = (torch.sum(bad) / torch.sum(answer))
+        loss += loss_step/(len(obatch) * 10)
+        # print(loss_step)
+        # plt.plot(range(len(bad.detach().numpy()[0])), bad.detach().numpy()[0], label="bad")
+        # plt.plot(range(len(label.detach().numpy())), label.detach().numpy(), label="label")
+        # plt.plot(range(len(multi.detach().numpy()[0])), multi.detach().numpy()[0], label="multi")
+        # plt.plot(range(len(answer.detach().numpy()[0])), answer.detach().numpy()[0], label="answer")
+        # plt.legend()
+        # plt.show()
+    return loss
 
 
 def get_loss_batch(obatch, lbatch):

@@ -124,21 +124,13 @@ def full_pan_tompkins(signal, cless_signal):
     max_dots = signal_trans[indices]
     cless_dots = cless_signal[indices]
     full_indices = prepare_indices(cless_signal,indices)
-    # plt.figure()
-    # plt.plot(range(len(signal_trans)), signal_trans)
-    # plt.plot(range(len(cless_res)), cless_res)
-    # plt.plot(range(len(cless_signal)), cless_signal)
-    # plt.scatter(indices, max_dots, color='red')
-    # plt.scatter(indices, maxes, color='blue')
-    # plt.scatter(indices, cless_dots, color='black')
-    # plt.show()
-
-    # return cless_signal, cless_res[:len(cless_signal)], full_indices
     return signal_trans, res[:len(cless_signal)], full_indices
 
 
 df = read_dataset("dataset.csv")
 new_df = []
+
+
 
 for i in range(df.shape[0] - 1):
     print("processing {} pair".format(i))
@@ -147,8 +139,8 @@ for i in range(df.shape[0] - 1):
     i += 1
 
 mixer = []
-sz = 730
-overlap = int(730/2)
+sz = 350
+overlap = int(350/2)
 for row in new_df:
     start = 0
     while start <= len(row[0]) - sz:
