@@ -55,7 +55,20 @@ def check_labels(labs):
 
 def build_labels(inputs1, inputs2, labels):
     offset = 10
-    kernel = gaussian(35, 5)
+    kernel = gaussian(15, 2)
+    # kernel = rect(20)
+    inputs1 = normalize_signal(inputs1)
+    inputs2 = normalize_signal(inputs2)
+    res = np.convolve(labels, kernel, 'same')
+    # plt.plot(range(len(res)), res)
+    # plt.show()
+    return res[offset:-offset], inputs1[offset:-offset], inputs2[offset:-offset]
+
+
+def build_labels_for_test(inputs1, inputs2, labels):
+    offset = 10
+    kernel = gaussian(15, 2)
+    # kernel = rect(20)
     inputs1 = normalize_signal(inputs1)
     inputs2 = normalize_signal(inputs2)
     res = np.convolve(labels, kernel, 'same')
@@ -69,7 +82,22 @@ def build_full_dataset(dataset):
         input1 = dataset.iloc[i]
         input2 = dataset.iloc[i+1]
         labels = dataset.iloc[i+2]
+
         labels, input1, input2 = build_labels(input1, input2, labels)
+        full_dataset.append([input1, input2, labels])
+        i += 3
+    return full_dataset
+
+
+def build_full_test_dataset(dataset):
+    full_dataset = []
+    i = 0
+    while i < dataset.shape[0]-3:
+        input1 = dataset.iloc[i]
+        input2 = dataset.iloc[i+1]
+        labels = dataset.iloc[i+2]
+
+        labels, input1, input2 = build_labels_for_test(input1, input2, labels)
         full_dataset.append([input1, input2, labels])
         i += 3
     return full_dataset
@@ -97,10 +125,9 @@ def save_splitted(dataset):
     train = dataset.iloc[:splitter]
     test = dataset.iloc[splitter:]
     debug = dataset.iloc[:150]
-    train.to_csv('train.csv', header=False, index=False)
-    test.to_csv('test.csv', header=False, index=False)
-    test.to_csv('debug.csv', header=False, index=False)
-
+    train.to_csv('train_non.csv', header=False, index=False)
+    test.to_csv('test_non.csv', header=False, index=False)
+    test.to_csv('debug_non.csv', header=False, index=False)
     return
 
 
@@ -117,6 +144,7 @@ class RNN(nn.Module):
         self.c4 = nn.Conv1d(32, 1, kernel_size=21, padding=10, padding_mode='zeros')
         self.c5 = nn.Conv1d(1, 1, kernel_size=21, padding=10, padding_mode='zeros')
         self.c6 = nn.Conv1d(1, 1, kernel_size = 21, padding=10, padding_mode='zeros')
+        self.linear = nn.Linear(330, 330)
         # self.l = nn.Linear(128, 1)
 
 
@@ -128,13 +156,14 @@ class RNN(nn.Module):
         c = self.c2(p)
         p = F.relu(c)
         c = self.c3(p)
-        p = F.tanh(c)
+        p = F.relu(c)
         c = self.c4(p)
-        p = F.tanh(c)
+        p = F.relu(c)
         c = self.c5(p)
-        p = F.tanh(c)
-        c = self.c6(p)
-        p = F.tanh(c)
+        p = sigm(c)
+        # p1 = torch.transpose(p, 1, 2)
+        # c = self.linear(p)
+        # p = F.relu(c)
         return p
 
 
@@ -146,26 +175,27 @@ n_layers = 2
 seq_len = 1
 
 rnn = RNN(input_size, output_size, n_layers=n_layers)
-criterion = nn.MSELoss()
-optimizer = optim.SGD(rnn.parameters(), lr=0.0001, momentum=0.9)
+# criterion = nnself.CTCLoss()
+criterion = nn.SmoothL1Loss()
+optimizer = optim.SGD(rnn.parameters(), lr=0.01, momentum=0.9, nesterov=True)
 
 # optimizer = optim.Adadelta(rnn.parameters(), lr=1.0)
 
 args = get_arguments()
 
-# dataset = read_dataset("dataset_contact.csv")
+# dataset = read_dataset("dataset_non_interp.csv")
 # save_splitted(dataset)
-
+# print("SAVED")
 if args.debug == "on":
-    train_dataset = read_dataset("debug.csv")
+    train_dataset = read_dataset("debug_non.csv")
     train_dataset = build_full_dataset(train_dataset)
-    batches = build_batches(train_dataset, 3)
-else:
-    train_dataset = read_dataset("train.csv")
-    test_dataset = read_dataset("test.csv")
-    train_dataset = build_full_dataset(train_dataset)
-    test_dataset = build_full_dataset(test_dataset)
     batches = build_batches(train_dataset, 9)
+else:
+    train_dataset = read_dataset("train_non.csv")
+    test_dataset = read_dataset("test_non.csv")
+    train_dataset = build_full_dataset(train_dataset)
+    test_dataset = build_full_test_dataset(test_dataset)
+    batches = build_batches(train_dataset, 6)
     t_batches = build_batches(test_dataset, 1)
 
 
@@ -197,59 +227,58 @@ if args.mode == "train":
             inputs = torch.from_numpy(np.asarray(input_batch)).float()
             labels = torch.from_numpy(np.asarray(output_batch)).float()
             optimizer.zero_grad()
+
             res1 = rnn.forward(inputs)
             res = res1.squeeze()
 
-            custom_loss = get_loss_batch3(res1, labels)
-
             loss = criterion(res, labels)
-            print(custom_loss)
-            custom_loss.backward()
-            print(res.grad)
+            loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            running_custom_loss += custom_loss
             losses.append(loss.item())
-            custom_losses.append(custom_loss.item())
             steps.append(j)
             j += 1
-            if i % 100 == 99:    # print every 2000 mini-batches
+            if i % 100 == 99:
                     print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
                     running_loss = 0.0
-                    print(running_custom_loss/100)
-                    running_custom_loss = 0.0
-
-    plt.plot(steps, losses, label="MSE")
-    plt.plot(steps, custom_losses, label="CUSTOM LOSS")
-    plt.show()
-    torch.save(rnn.state_dict(), 'model.pth')
-else:
-    print("Testing")
-    counts = []
-    rnn.load_state_dict(torch.load('model.pth'))
-    for i, batch in enumerate(t_batches):
-        input_batch = batch[:, :2]
-        output_batch = batch[:, 2]
-        inputs = torch.from_numpy(np.asarray(input_batch)).float()
-        labels = torch.from_numpy(np.asarray(output_batch)).float()
-        res1 = rnn.forward(inputs)
-
-        custom_loss = get_loss_batch2(res1, labels)
-
         to_plot = res1.detach().numpy()[0][0]
         to_plot2 = normalize_signal(input_batch[0])
-        r = get_hr_metric(to_plot, output_batch[0])
-        if len(r) >0:
-            counts.append(get_hr_metric(to_plot, output_batch[0]))
-        # plt.plot(range(len(to_plot)), to_plot)
-        # plt.plot(range(len(output_batch[0])), output_batch[0])
-        # plt.legend()
-        # plt.show()
+        plt.plot(range(len(to_plot)), to_plot)
+        plt.plot(range(len(output_batch[0])), output_batch[0])
+        plt.show()
 
-        res = res1.squeeze()
-        loss = criterion(res, labels)
-        print(loss)
-    counts = np.asarray(counts)
-    print("AVERAGE HR DIFF ", np.nanmean(counts[:, 3]))
-    print(counts[:, 3])
-    print("PERCENTAGE OF GOOD PIECES ", np.mean(counts[:, 2]))
+
+    plt.plot(steps, losses, label="MSE")
+    plt.show()
+    torch.save(rnn.state_dict(), 'model_nesterov_09_gauss_tanh_huber.pth')
+else:
+    print("Testing")
+    counts = {}
+
+    rnn.load_state_dict(torch.load('model_nesterov_09_gauss_tanh_huber.pth'))
+    for t in np.arange(0.2, 1, 0.1):
+        t = 0.7
+        tf = np.zeros(4)
+        counts[t] = []
+        for i, batch in enumerate(t_batches):
+            input_batch = batch[:, :2]
+            output_batch = batch[:, 2]
+            inputs = torch.from_numpy(np.asarray(input_batch)).float()
+            labels = torch.from_numpy(np.asarray(output_batch)).float()
+            res1 = rnn.forward(inputs)
+
+            r = get_hr_metric(res1, output_batch[0], t)
+            if len(r) >0:
+                counts[t].append(r)
+                tf += r[-1]
+            res = res1.squeeze()
+            loss = criterion(res, labels)
+    print()
+    for t in counts:
+        print(t)
+        counts[t] = np.asarray(counts[t])
+        print("AVERAGE HR DIFF ", np.nanmean(counts[t][:, 3]))
+        # print(counts[t][:, 3])
+        print("PERCENTAGE OF GOOD PIECES ", np.mean(counts[t][:, 2]))
+        metrics = get_precision_recall(*tf)
+        print(metrics)

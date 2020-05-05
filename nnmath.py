@@ -42,6 +42,18 @@ def get_loss(nnout, labels):
     return loss_function(peaks, lpeaks)
 
 
+def pearsonr(result, target):
+    s = 0
+    for i in range(len(result)):
+        res = result[i] - torch.mean(result[i])
+        tag = target[i] - torch.mean(target[i])
+        if ((torch.sum(res**2)!=0) & (torch.sum(tag**2)!=0)):
+            s += -1 + torch.sum(res*tag) / (torch.sum(res**2)*torch.sum(tag**2)) ** 0.5
+        else:
+            s += 1
+
+    return -s / (2*len(result))
+
 def cutout_low(signal, threshold):
     idxs = torch.where(signal < threshold)
     signal[idxs] = 0
@@ -86,3 +98,8 @@ def get_pairs(p1, p2):
 
 def get_pairs_diff(ps):
     return [np.abs(x[0]-x[1]) for x in ps]
+
+def rect(size):
+    rect = np.zeros(size)
+    rect[int(size/2)-5:int(size/2)+5] = 1
+    return rect

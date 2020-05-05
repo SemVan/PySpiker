@@ -13,6 +13,7 @@ FS = 1 / PERIOD
 
 def pan_tompkins_algo(signal_to_process):
     sig_interp, newx = interpolation(signal_to_process, 10)
+    # sig_interp, newx = signal_to_process, list(range(len(signal_to_process)))
     sig_interp = butter_bandpass_filter(sig_interp, 0.1, 10, FS, 5)
     norm_signal = normalize(sig_interp)
     deriv = get_derivative(norm_signal)
@@ -65,7 +66,8 @@ def interpolation(signal, ratio):
 
 def hard_peaks(signal):
     signal = np.asarray(signal) / np.max(signal)
-    peaks2 = peakdetect(signal,lookahead=31)
+    print("peaks")
+    peaks2 = peakdetect(signal,lookahead=5)
     peaks_max = []
     for i in peaks2[0]:
         peaks_max.append(i[1])
@@ -130,19 +132,19 @@ def full_pan_tompkins(signal, cless_signal):
 df = read_dataset("dataset.csv")
 new_df = []
 
-
-
-for i in range(df.shape[0] - 1):
+i = 0
+while i < df.shape[0] - 1:
     print("processing {} pair".format(i))
     signal, pt, true_indices = full_pan_tompkins(df.iloc[i+1], df.iloc[i])
     new_df.append([signal, pt, true_indices])
-    i += 1
+    i += 2
 
 mixer = []
-sz = 350
-overlap = int(350/2)
+sz = 200
+overlap = int(200/5)
 for row in new_df:
     start = 0
+    print("LEN IS ", len(row))
     while start <= len(row[0]) - sz:
         r1 = row[0][start : start + sz]
         r2 = row[1][start : start + sz]
@@ -152,4 +154,4 @@ for row in new_df:
 
 
 print("total_inputs ", len(mixer))
-write_dataset(mixer, "dataset_contact.csv")
+write_dataset(mixer, "dataset_non_interp.csv")
