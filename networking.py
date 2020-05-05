@@ -191,12 +191,14 @@ if args.debug == "on":
     train_dataset = build_full_dataset(train_dataset)
     batches = build_batches(train_dataset, 9)
 else:
-    train_dataset = read_dataset("train_non.csv")
-    test_dataset = read_dataset("test_non.csv")
-    train_dataset = build_full_dataset(train_dataset)
-    test_dataset = build_full_test_dataset(test_dataset)
-    batches = build_batches(train_dataset, 6)
-    t_batches = build_batches(test_dataset, 1)
+    if args.mode == "train":
+        train_dataset = read_dataset("train_non.csv")
+        train_dataset = build_full_dataset(train_dataset)
+        batches = build_batches(train_dataset, 6)
+    else:
+        test_dataset = read_dataset("test_non.csv")
+        test_dataset = build_full_test_dataset(test_dataset)
+        t_batches = build_batches(test_dataset, 1)
 
 
 print("DATASET LOADED")
@@ -254,10 +256,9 @@ if args.mode == "train":
 else:
     print("Testing")
     counts = {}
-
+    tfs = {}
     rnn.load_state_dict(torch.load('model_nesterov_09_gauss_tanh_huber.pth'))
-    for t in np.arange(0.2, 1, 0.1):
-        t = 0.7
+    for t in np.arange(0.1, 1, 0.1):
         tf = np.zeros(4)
         counts[t] = []
         for i, batch in enumerate(t_batches):
@@ -273,12 +274,14 @@ else:
                 tf += r[-1]
             res = res1.squeeze()
             loss = criterion(res, labels)
+        tfs[t] = tf
     print()
     for t in counts:
         print(t)
-        counts[t] = np.asarray(counts[t])
-        print("AVERAGE HR DIFF ", np.nanmean(counts[t][:, 3]))
+        print(tfs[t])
+        # cnts = np.asarray(counts[t][:3])
+        # print("AVERAGE HR DIFF ", np.nanmean(cnts[:, 3]))
         # print(counts[t][:, 3])
-        print("PERCENTAGE OF GOOD PIECES ", np.mean(counts[t][:, 2]))
-        metrics = get_precision_recall(*tf)
+        # print("PERCENTAGE OF GOOD PIECES ", np.mean(cnts[:, 2]))
+        metrics = get_precision_recall(*tfs[t])
         print(metrics)

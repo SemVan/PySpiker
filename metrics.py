@@ -12,10 +12,13 @@ def get_hr_metric(output, label, thresh):
     out_hr, out_diffs = get_hr(out_idx)
     good = int(abs(lbl_hr - out_hr) <= 1)
     tf = get_true_false(lbl_idx, out_idx, len(label))
+    print(tf)
     if np.isnan(out_hr) or np.isnan(lbl_hr):
-        return [0, out_hr, 0, out_hr,]
-
-    tf = get_true_false(lbl_idx, out_idx, len(label))
+        return [0, out_hr, 0, out_hr, tf]
+    # plt.plot(range(len(output)), output)
+    # plt.plot(range(len(label)), label)
+    # plt.show()
+    # tf = get_true_false(lbl_idx, out_idx, len(label))
     return [lbl_hr, out_hr, good, abs(lbl_hr-out_hr), tf]
 
 
@@ -50,7 +53,6 @@ def filter_peaks(peaks):
     i = 0
     if len(peaks):
         while i < len(peaks)-1:
-            print(i)
             if abs(peaks[i] - peaks[i+1]) < 10:
                 new_peaks.append((peaks[i] + peaks[i+1])/2)
                 i += 2
@@ -88,35 +90,39 @@ def get_piece_approx(x, y):
 
 def get_true_false(peaks_true, peaks_new, length):
     tp = 0
-    tf = 0
+    tn = 0
     fp = 0
     fn = 0
-    peaks_true = build_peaks_interval(peaks_true)
-    for i in range(length):
+    peaks_true_full = build_peaks_interval(peaks_true, length)
+    peaks_new_full = build_peaks_interval(peaks_new, length)
+    for i in range(length-1):
         if i in peaks_new:
-            if peaks_true[i] == 1:
+            if peaks_true_full[i] == 1:
                 tp += 1
             else:
                 fp += 1
         else:
-            if peaks_true[i] == 1:
-                fn += 1
+            if i in peaks_true:
+                if peaks_new_full[i] != 1:
+                    fn += 1
+                else:
+                    tn += 1
             else:
-                fp += 1
+                tn += 1
 
-    return np.asarray([tp, fp, tn, fn])
+    return np.asarray([tp, tn, fp, fn])
 
 def get_precision_recall(tp, tn, fp, fn):
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fp)
+    precision = float(float(tp) / (tp + fp))
+    recall = float(tp) / (tp + fn)
     f1 = 2 * precision * recall / (precision + recall)
     return [precision, recall, f1]
 
-def build_peaks_interval(peaks):
-    min_peak = np.min(peaks)
-    max_peak = np.max(peaks)
-    l = max_peak + 5 - (min_peak - 5)
+def build_peaks_interval(peaks, l):
     new_peaks = np.zeros(l)
-    for peak in peaks:
-        new_peaks[peak - 5:peak + 5] = 1
+    if len(peaks) > 0:
+        min_peak = np.min(peaks)
+        max_peak = np.max(peaks)
+        for peak in peaks:
+            new_peaks[max(0, int(peak) - 5): min(l-1, int(peak) + 5)] = 1
     return new_peaks
